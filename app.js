@@ -176,6 +176,7 @@
 
   let state = loadState();
   let shared = null;          // 공유 링크(#s=)로 열린 근무표
+  let firstRun = false;       // 저장된 설정이 없는 첫 실행
   let view = 'mine';          // 'mine' | 'all'
   let viewYear, viewMonth;
   let sheetCtx = null;
@@ -186,6 +187,7 @@
     try {
       const raw = localStorage.getItem(LS_STATE);
       if (raw) return normalize(JSON.parse(raw));
+      firstRun = true;
     } catch (e) { /* 무시하고 기본값 */ }
     return defaultState();
   }
@@ -1209,6 +1211,14 @@
     updateMonthLabel();
     renderAll();
     maybeShowInstallBanner();
+
+    // 처음 여는 사람에게는 설정을 한 번에 끝내도록 안내
+    if (firstRun && !shared) {
+      setTimeout(() => {
+        openSettings();
+        toast('기준 주와 내 조만 정하면 끝나요');
+      }, 350);
+    }
 
     window.addEventListener('hashchange', () => {
       const h = readHash();
