@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="4조 근무표">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16213a"/>
+      <stop offset="1" stop-color="#0a101e"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="87" y="87" width="152" height="152" rx="43" fill="#f59e0b"/>
+  <rect x="273" y="87" width="152" height="152" rx="43" fill="#3b82f6"/>
+  <rect x="87" y="273" width="152" height="152" rx="43" fill="#8b5cf6"/>
+  <rect x="273" y="273" width="152" height="152" rx="43" fill="#34d399"/>
+</svg>
