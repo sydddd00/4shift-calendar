@@ -16,12 +16,16 @@
   const WD_SHORT = WD;
 
   const ORDER_PRESETS = [
-    { arr: ['D', 'E', 'N', 'O'], label: '오전 → 오후 → 야간 → 휴무' },
-    { arr: ['D', 'N', 'E', 'O'], label: '오전 → 야간 → 오후 → 휴무' },
-    { arr: ['E', 'N', 'D', 'O'], label: '오후 → 야간 → 오전 → 휴무' },
-    { arr: ['N', 'D', 'E', 'O'], label: '야간 → 오전 → 오후 → 휴무' },
-    { arr: ['N', 'E', 'D', 'O'], label: '야간 → 오후 → 오전 → 휴무' },
-    { arr: ['E', 'D', 'N', 'O'], label: '오후 → 오전 → 야간 → 휴무' }
+    { arr: ['D', 'E', 'N'], label: '3주 순환 · 오전 → 오후 → 야간' },
+    { arr: ['D', 'N', 'E'], label: '3주 순환 · 오전 → 야간 → 오후' },
+    { arr: ['E', 'N', 'D'], label: '3주 순환 · 오후 → 야간 → 오전' },
+    { arr: ['E', 'D', 'N'], label: '3주 순환 · 오후 → 오전 → 야간' },
+    { arr: ['N', 'D', 'E'], label: '3주 순환 · 야간 → 오전 → 오후' },
+    { arr: ['N', 'E', 'D'], label: '3주 순환 · 야간 → 오후 → 오전' },
+    { arr: ['D', 'E', 'N', 'O'], label: '4주 순환 · 오전 → 오후 → 야간 → 휴무' },
+    { arr: ['D', 'N', 'E', 'O'], label: '4주 순환 · 오전 → 야간 → 오후 → 휴무' },
+    { arr: ['E', 'N', 'D', 'O'], label: '4주 순환 · 오후 → 야간 → 오전 → 휴무' },
+    { arr: ['N', 'D', 'E', 'O'], label: '4주 순환 · 야간 → 오전 → 오후 → 휴무' }
   ];
 
   const TYPES = [
@@ -31,6 +35,7 @@
     { id: 'vacation', label: '휴가' },
     { id: 'comp', label: '대체휴무' },
     { id: 'overtime', label: '특근' },
+    { id: 'rest', label: '휴무' },
     { id: 'change', label: '근무변경' },
     { id: 'memo', label: '메모' }
   ];
@@ -73,13 +78,13 @@
      ========================================================= */
   function defaultState() {
     return {
-      v: 2,
+      v: 3,
       teams: [{ name: '1조' }, { name: '2조' }, { name: '3조' }, { name: '4조' }],
       myTeam: 0,
       baseMonday: iso(mondayOf(new Date())),
-      baseShift: ['D', 'E', 'N', 'O'],
-      order: ['D', 'E', 'N', 'O'],
-      shiftDays: { D: [0, 1, 2, 3, 4, 5, 6], E: [0, 1, 2, 3, 4, 5, 6], N: [0, 1, 2, 3, 4, 5, 6] },
+      baseShift: ['D', 'E', 'N', 'D'],
+      order: ['D', 'E', 'N'],
+      shiftDays: { D: [1, 2, 3, 4, 5], E: [1, 2, 3, 4, 5], N: [1, 2, 3, 4, 5] },
       annualTotal: 15,
       annualYear: new Date().getFullYear(),
       overrides: {}
@@ -98,6 +103,8 @@
     out.baseMonday = iso(mondayOf(parseISO(out.baseMonday)));
     out.baseShift = fixShifts(out.baseShift);
     out.order = fixOrder(out.order);
+    out.baseShift = alignBase(out.baseShift, out.order);
+    out.v = 3;
     out.shiftDays = normalizeShiftDays(s && s.shiftDays, s);
     delete out.weekMode;
     delete out.customDays;
@@ -111,7 +118,7 @@
       Object.keys(teams).forEach((tk) => {
         const ov = teams[tk];
         const ok = ov && typeof ov === 'object' && (
-          ['annual', 'amHalf', 'pmHalf', 'vacation', 'comp', 'overtime', 'change', 'memo'].indexOf(ov.t) >= 0 ||
+          ['annual', 'amHalf', 'pmHalf', 'vacation', 'comp', 'overtime', 'rest', 'change', 'memo'].indexOf(ov.t) >= 0 ||
           (typeof ov.n === 'string' && ov.n.trim())
         );
         if (!ok) delete teams[tk];
@@ -134,8 +141,11 @@
     (Array.isArray(arr) ? arr : []).forEach((x) => {
       if (SHIFT_IDS.indexOf(x) >= 0 && out.indexOf(x) < 0 && out.length < 4) out.push(x);
     });
-    SHIFT_IDS.forEach((id) => { if (out.indexOf(id) < 0) out.push(id); });
-    return out.slice(0, 4);
+    if (out.length >= 2) return out;
+    return ['D', 'E', 'N'];
+  }
+  function alignBase(shifts, order) {
+    return shifts.map((sid, i) => (order.indexOf(sid) >= 0 ? sid : order[i % order.length]));
   }
 
   const LEGACY_WEEK = { '7': [0, 1, 2, 3, 4, 5, 6], '5': [1, 2, 3, 4, 5], '6': [1, 2, 3, 4, 5, 6] };
@@ -159,9 +169,9 @@
     }
     const src = sd && typeof sd === 'object' ? sd : {};
     return {
-      D: cleanDays(src.D, fallback || [0, 1, 2, 3, 4, 5, 6]),
-      E: cleanDays(src.E, fallback || [0, 1, 2, 3, 4, 5, 6]),
-      N: cleanDays(src.N, fallback || [0, 1, 2, 3, 4, 5, 6])
+      D: cleanDays(src.D, fallback || [1, 2, 3, 4, 5]),
+      E: cleanDays(src.E, fallback || [1, 2, 3, 4, 5]),
+      N: cleanDays(src.N, fallback || [1, 2, 3, 4, 5])
     };
   }
   function daysLabel(days) {
@@ -186,10 +196,28 @@
   function loadState() {
     try {
       const raw = localStorage.getItem(LS_STATE);
-      if (raw) return normalize(JSON.parse(raw));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.v === 3) return normalize(parsed);
+        return normalize(migrateV3(parsed)); // 예전 4주 버전 → 새 3주 기본값으로 정리
+      }
       firstRun = true;
     } catch (e) { /* 무시하고 기본값 */ }
     return defaultState();
+  }
+
+  // v3 마이그레이션: 근무 패턴은 새 기본값(3주 순환·주 5일)으로,
+  // 조 이름·내 조·연차 설정·날짜별 기록은 그대로 살린다.
+  function migrateV3(old) {
+    const keep = { v: 3 };
+    if (old && typeof old === 'object') {
+      if (Array.isArray(old.teams)) keep.teams = old.teams;
+      if (typeof old.myTeam === 'number') keep.myTeam = old.myTeam;
+      if (typeof old.annualTotal === 'number') keep.annualTotal = old.annualTotal;
+      if (typeof old.annualYear === 'number') keep.annualYear = old.annualYear;
+      if (old.overrides && typeof old.overrides === 'object') keep.overrides = old.overrides;
+    }
+    return keep;
   }
   function saveState() {
     try { localStorage.setItem(LS_STATE, JSON.stringify(state)); } catch (e) { /* 저장 불가 */ }
@@ -218,11 +246,13 @@
     return days.indexOf(d.getDay()) >= 0;
   }
   function rotatedShift(s, teamIdx, d) {
-    const base = s.baseShift[teamIdx] || 'O';
-    const pos = s.order.indexOf(base);
+    const order = s.order && s.order.length >= 2 ? s.order : ['D', 'E', 'N'];
+    const n = order.length;
+    const base = s.baseShift[teamIdx] || order[0];
+    const pos = order.indexOf(base);
     const wk = weekIndex(s, d);
-    const idx = ((pos < 0 ? 0 : pos) + wk) % 4;
-    return s.order[(idx + 4) % 4];
+    const idx = (((pos < 0 ? 0 : pos) + wk) % n + n) % n;
+    return order[idx];
   }
   function baseShiftFor(s, teamIdx, d) {
     const sid = rotatedShift(s, teamIdx, d);
@@ -240,6 +270,7 @@
       case 'annual': return { sid: 'O', kind: 'annual', memo: ov.n || '' };
       case 'vacation': return { sid: 'O', kind: 'vacation', memo: ov.n || '' };
       case 'comp': return { sid: 'O', kind: 'comp', memo: ov.n || '' };
+      case 'rest': return { sid: 'O', kind: 'rest', memo: ov.n || '' };
       case 'amHalf': return { sid: base, kind: 'half', half: 'am', memo: ov.n || '' };
       case 'pmHalf': return { sid: base, kind: 'half', half: 'pm', memo: ov.n || '' };
       case 'overtime': return { sid: ov.s && SHIFTS[ov.s] ? ov.s : (base === 'O' ? 'D' : base), kind: 'ot', memo: ov.n || '' };
@@ -255,6 +286,7 @@
     if (e.kind === 'annual') return '연차';
     if (e.kind === 'vacation') return '휴가';
     if (e.kind === 'comp') return '대체휴무';
+    if (e.kind === 'rest') return '휴무';
     if (e.kind === 'half') return e.half === 'am' ? '오전반차' : '오후반차';
     if (e.kind === 'ot') return '특근';
     return SHIFTS[e.sid] ? SHIFTS[e.sid].label : '휴무';
@@ -263,6 +295,7 @@
     if (e.kind === 'annual') return '연차';
     if (e.kind === 'vacation') return '휴가';
     if (e.kind === 'comp') return '대체휴';
+    if (e.kind === 'rest') return '휴무';
     if (e.kind === 'half') return e.half === 'am' ? '오전반' : '오후반';
     if (e.kind === 'ot') return '특근';
     return SHIFTS[e.sid] ? SHIFTS[e.sid].short : '휴무';
@@ -271,6 +304,7 @@
     if (e.kind === 'annual') return 'b-annual';
     if (e.kind === 'vacation') return 'b-vac';
     if (e.kind === 'comp') return 'b-comp';
+    if (e.kind === 'rest') return 'b-rest';
     if (e.kind === 'half') return 'b-half';
     if (e.kind === 'ot') return 'b-ot';
     return 'b-' + (SHIFTS[e.sid] ? e.sid : 'O');
@@ -713,7 +747,7 @@
 
     const baseRows = s.teams.map((t, i) =>
       '<div class="pick-row"><span class="pr-name">' + (i + 1) + '. ' + esc(t.name) + (i === s.myTeam ? '<em>나</em>' : '') + '</span>' +
-      '<select data-bs="' + i + '">' + SHIFT_IDS.map((id) =>
+      '<select data-bs="' + i + '">' + s.order.map((id) =>
         '<option value="' + id + '"' + (s.baseShift[i] === id ? ' selected' : '') + '>' + SHIFTS[id].label + '</option>').join('') +
       '</select></div>').join('');
 
@@ -753,12 +787,13 @@
       '<div class="base-grid" style="margin-top:9px">' + baseRows + '</div></div>' +
 
       '<div class="sheet-sec"><h3>순환 순서 (1주마다)</h3>' +
-      '<div class="form-row"><select id="setOrder" style="max-width:none;width:100%">' + orderOpts + '</select></div></div>' +
+      '<div class="form-row"><select id="setOrder" style="max-width:none;width:100%">' + orderOpts + '</select></div>' +
+      '<p class="hint">기본은 3주 순환(오전 → 오후 → 야간)이에요. 휴무주를 넣은 4주 순환으로 바꿀 수도 있습니다.</p></div>' +
 
       '<div class="sheet-sec"><h3>근무 요일 (시프트마다)</h3>' +
-      '<p class="hint">오전주·오후주·야간주마다 회사 규칙이 다르면 여기서 맞춰 주세요. 체크한 요일만 근무하고, 나머지는 휴무로 표시됩니다. 휴무 주는 7일 내내 휴무예요.</p>' +
+      '<p class="hint">기본은 월~금 주 5일이에요. 회사 규칙이 다르면 요일을 눌러 끄고 켜면 됩니다(예: 토·일 근무, 수요일 휴무). 5일/6일/7일 버튼으로 한 번에 맞출 수도 있습니다. 휴무주는 7일 내내 휴무예요.</p>' +
       '<div class="sd-list">' + sdRows +
-      '<div class="sd-row sd-off"><span class="badge b-O">휴무</span><span class="sd-off-t">휴무 주 · 7일 내내 휴무</span></div>' +
+      '<div class="sd-row sd-off"><span class="badge b-O">휴무</span><span class="sd-off-t">휴무주(순환에 휴무를 넣었을 때) · 7일 내내 휴무</span></div>' +
       '</div></div>' +
 
       '<div class="sheet-sec"><h3>연차</h3>' +
@@ -800,7 +835,16 @@
       });
     });
     const ord = sheetInner.querySelector('#setOrder');
-    if (ord) ord.addEventListener('change', () => { draft.order = ord.value.split(''); });
+    if (ord) ord.addEventListener('change', () => {
+      draft.order = ord.value.split('');
+      draft.baseShift = alignBase(draft.baseShift, draft.order);
+      sheetInner.querySelectorAll('[data-bs]').forEach((sel) => {
+        const i = Number(sel.getAttribute('data-bs'));
+        sel.innerHTML = draft.order.map((id) =>
+          '<option value="' + id + '">' + SHIFTS[id].label + '</option>').join('');
+        sel.value = draft.baseShift[i];
+      });
+    });
     sheetInner.querySelectorAll('[data-sdday]').forEach((el) => {
       el.addEventListener('change', () => {
         const parts = el.getAttribute('data-sdday').split('-');
@@ -970,9 +1014,9 @@
           'SUMMARY:' + icsEscape(title),
           'DESCRIPTION:' + icsEscape(sh.label + ' ' + sh.time + (e.memo ? ' / ' + e.memo : '')),
           'TRANSP:OPAQUE', 'END:VEVENT');
-      } else if (e.kind === 'annual' || e.kind === 'vacation' || e.kind === 'half' || e.kind === 'comp') {
+      } else if (e.kind === 'annual' || e.kind === 'vacation' || e.kind === 'half' || e.kind === 'comp' || e.kind === 'rest') {
         const label = e.kind === 'half' ? (e.half === 'am' ? '오전반차' : '오후반차')
-          : (e.kind === 'annual' ? '연차' : (e.kind === 'comp' ? '대체휴무' : '휴가'));
+          : (e.kind === 'annual' ? '연차' : (e.kind === 'comp' ? '대체휴무' : (e.kind === 'rest' ? '휴무' : '휴가')));
         const nd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
         L.push('BEGIN:VEVENT', 'UID:' + uid + '-leave@4shift-calendar', 'DTSTAMP:' + icsStamp(new Date()),
           'DTSTART;VALUE=DATE:' + icsDate(d), 'DTEND;VALUE=DATE:' + icsDate(nd),
