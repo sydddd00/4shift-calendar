@@ -1,5 +1,5 @@
 /* 4조 교대 근무표 — 오프라인 캐시 (network-first, 캐시는 대비용) */
-const CACHE = 'shift4-v1';
+const CACHE = 'shift4-v4';
 const ASSETS = [
   './',
   './index.html',
