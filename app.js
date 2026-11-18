@@ -174,9 +174,9 @@
     return d.map((n) => WD[n]).join('·');
   }
 
+  let firstRun = false;       // 저장된 설정이 없는 첫 실행
   let state = loadState();
   let shared = null;          // 공유 링크(#s=)로 열린 근무표
-  let firstRun = false;       // 저장된 설정이 없는 첫 실행
   let view = 'mine';          // 'mine' | 'all'
   let viewYear, viewMonth;
   let sheetCtx = null;
