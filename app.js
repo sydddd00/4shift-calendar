@@ -99,6 +99,8 @@
     out.baseShift = fixShifts(out.baseShift);
     out.order = fixOrder(out.order);
     out.shiftDays = normalizeShiftDays(s && s.shiftDays, s);
+    delete out.weekMode;
+    delete out.customDays;
     out.annualTotal = Math.max(0, Math.min(60, Number(out.annualTotal) || 0));
     out.annualYear = Number(out.annualYear) || new Date().getFullYear();
     out.overrides = (out.overrides && typeof out.overrides === 'object') ? out.overrides : {};
