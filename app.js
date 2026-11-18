@@ -820,12 +820,13 @@
       '<dt>주말</dt><dd>' + ({ '7': '주 7일 순환', '5': '주 5일 근무', '6': '주 6일 근무', custom: '직접 설정' })[s.weekMode] + '</dd>' +
       '<dt>기록</dt><dd>연차 ' + fmtNum(st.used) + '일 · 휴가 ' + fmtNum(st.vac) + '일</dd>' +
       '</dl>' +
-      '<p class="hint">링크에는 지금 설정(조 이름·기준 주·순환)과 등록한 연차·휴가·메모가 함께 담깁니다. 친구는 링크를 열어 "내 기기에 저장"을 누르면 그 근무표를 자기 기기에도 저장할 수 있어요.</p>' +
+      '<p class="hint">링크에는 지금 설정(조 이름·기준 주·순환)과 등록한 연차·휴가·메모가 함께 담깁니다. 친구는 링크를 열어 "내 기기에 저장"을 누르면 그 근무표를 자기 기기에도 저장할 수 있어요.<br><br>나중에 연차를 더 추가하면 그때 <b>새 링크를 다시 보내주세요</b> — 링크는 보낸 순간의 내용으로 고정됩니다.</p>' +
       (shared ? '<div class="sheet-actions"><button class="primary" data-action="save-shared">이 근무표를 내 기기에 저장</button></div>' : '') +
       '<div class="sheet-actions"><button data-action="close">닫기</button></div>';
 
     const inp = sheetInner.querySelector('#shareUrlInput');
     if (inp) inp.addEventListener('focus', () => inp.select());
+    showSheet();
   }
 
   async function copyLink() {
