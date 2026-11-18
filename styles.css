@@ -169,6 +169,7 @@ h1,h2,h3,p{margin:0}
 .b-annual{background:#ffe4e6;color:#9f1239}
 .b-vac{background:#cffafe;color:#155e75}
 .b-half{background:#ffedd5;color:#9a3412}
+.b-comp{background:#ccfbf1;color:#115e59}
 .b-ot{background:#dcfce7;color:#166534}
 @media (prefers-color-scheme: dark){
   .b-D{background:rgba(245,158,11,.18);color:#fcd34d}
@@ -178,6 +179,7 @@ h1,h2,h3,p{margin:0}
   .b-annual{background:rgba(244,63,94,.2);color:#fda4af}
   .b-vac{background:rgba(6,182,212,.2);color:#67e8f9}
   .b-half{background:rgba(249,115,22,.2);color:#fdba74}
+  .b-comp{background:rgba(20,184,166,.2);color:#5eead4}
   .b-ot{background:rgba(34,197,94,.2);color:#86efac}
 }
 
@@ -189,6 +191,7 @@ h1,h2,h3,p{margin:0}
 .c-annual{background:#e11d48}
 .c-vac{background:#06b6d4}
 .c-half{background:#f97316}
+.c-comp{background:#0d9488}
 .c-ot{background:#16a34a}
 
 /* all-team mini list */
@@ -241,6 +244,9 @@ h1,h2,h3,p{margin:0}
 .install-banner b{font-weight:800}
 .install-banner .ib-btn{background:#fff;color:#111827;font-weight:800;font-size:12px;border-radius:9px;padding:7px 10px;flex:none}
 .install-banner .ib-close{color:#cbd5e1;font-size:14px;padding:4px;flex:none}
+
+/* 설치 안내가 떠 있을 때 하단 내용이 가려지지 않도록 */
+body.has-ib .app{padding-bottom:calc(104px + var(--safe-b))}
 
 /* ---------- sheet ---------- */
 .backdrop{
@@ -342,6 +348,21 @@ h1,h2,h3,p{margin:0}
 .day-checks label{display:grid;place-items:center;gap:3px;background:var(--card-2);border-radius:9px;padding:7px 0;font-size:11px;font-weight:700;color:var(--muted)}
 .day-checks input{accent-color:var(--accent);width:15px;height:15px}
 .day-checks label.on{color:var(--accent)}
+
+/* 시프트별 근무 요일 */
+.sd-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.sd-row{background:var(--card-2);border-radius:12px;padding:9px 10px}
+.sd-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
+.sd-head .badge em{font-style:normal;font-weight:600;font-size:9.5px;opacity:.8}
+.sd-quick{display:flex;gap:4px}
+.sd-quick button{
+  font-size:11px;font-weight:700;padding:4px 8px;border-radius:8px;
+  background:var(--card);border:1px solid var(--line);color:var(--muted);
+}
+.sd-quick button.on{background:var(--accent);color:#fff;border-color:transparent}
+.sd-off{display:flex;align-items:center;gap:8px}
+.sd-off-t{font-size:11.5px;color:var(--muted);font-weight:600}
+.sd-row .day-checks{margin-top:0}
 .reset-note{font-size:11px;color:var(--muted);margin-top:9px;line-height:1.5}
 
 /* share sheet */

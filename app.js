@@ -29,6 +29,7 @@
     { id: 'amHalf', label: '오전반차' },
     { id: 'pmHalf', label: '오후반차' },
     { id: 'vacation', label: '휴가' },
+    { id: 'comp', label: '대체휴무' },
     { id: 'overtime', label: '특근' },
     { id: 'change', label: '근무변경' },
     { id: 'memo', label: '메모' }
@@ -72,14 +73,13 @@
      ========================================================= */
   function defaultState() {
     return {
-      v: 1,
+      v: 2,
       teams: [{ name: '1조' }, { name: '2조' }, { name: '3조' }, { name: '4조' }],
       myTeam: 0,
       baseMonday: iso(mondayOf(new Date())),
       baseShift: ['D', 'E', 'N', 'O'],
       order: ['D', 'E', 'N', 'O'],
-      weekMode: '7',
-      customDays: [1, 2, 3, 4, 5],
+      shiftDays: { D: [0, 1, 2, 3, 4, 5, 6], E: [0, 1, 2, 3, 4, 5, 6], N: [0, 1, 2, 3, 4, 5, 6] },
       annualTotal: 15,
       annualYear: new Date().getFullYear(),
       overrides: {}
@@ -98,9 +98,7 @@
     out.baseMonday = iso(mondayOf(parseISO(out.baseMonday)));
     out.baseShift = fixShifts(out.baseShift);
     out.order = fixOrder(out.order);
-    out.weekMode = ['7', '5', '6', 'custom'].indexOf(out.weekMode) >= 0 ? out.weekMode : '7';
-    out.customDays = Array.isArray(out.customDays) ? out.customDays.filter((n) => n >= 0 && n <= 6) : [1, 2, 3, 4, 5];
-    if (!out.customDays.length) out.customDays = [1, 2, 3, 4, 5];
+    out.shiftDays = normalizeShiftDays(s && s.shiftDays, s);
     out.annualTotal = Math.max(0, Math.min(60, Number(out.annualTotal) || 0));
     out.annualYear = Number(out.annualYear) || new Date().getFullYear();
     out.overrides = (out.overrides && typeof out.overrides === 'object') ? out.overrides : {};
@@ -111,7 +109,7 @@
       Object.keys(teams).forEach((tk) => {
         const ov = teams[tk];
         const ok = ov && typeof ov === 'object' && (
-          ['annual', 'amHalf', 'pmHalf', 'vacation', 'overtime', 'change', 'memo'].indexOf(ov.t) >= 0 ||
+          ['annual', 'amHalf', 'pmHalf', 'vacation', 'comp', 'overtime', 'change', 'memo'].indexOf(ov.t) >= 0 ||
           (typeof ov.n === 'string' && ov.n.trim())
         );
         if (!ok) delete teams[tk];
@@ -136,6 +134,42 @@
     });
     SHIFT_IDS.forEach((id) => { if (out.indexOf(id) < 0) out.push(id); });
     return out.slice(0, 4);
+  }
+
+  const LEGACY_WEEK = { '7': [0, 1, 2, 3, 4, 5, 6], '5': [1, 2, 3, 4, 5], '6': [1, 2, 3, 4, 5, 6] };
+
+  function cleanDays(arr, fallback) {
+    const src = Array.isArray(arr) ? arr : fallback;
+    const out = [];
+    (src || []).forEach((n) => {
+      const v = Number(n);
+      if (v >= 0 && v <= 6 && out.indexOf(v) < 0) out.push(v);
+    });
+    return out.sort((a, b) => a - b);
+  }
+
+  // 예전 버전(weekMode/customDays) 설정도 그대로 읽어서 shiftDays로 바꿔준다
+  function normalizeShiftDays(sd, legacy) {
+    let fallback = null;
+    if (legacy) {
+      if (legacy.weekMode === 'custom' && Array.isArray(legacy.customDays)) fallback = legacy.customDays;
+      else if (LEGACY_WEEK[legacy.weekMode]) fallback = LEGACY_WEEK[legacy.weekMode];
+    }
+    const src = sd && typeof sd === 'object' ? sd : {};
+    return {
+      D: cleanDays(src.D, fallback || [0, 1, 2, 3, 4, 5, 6]),
+      E: cleanDays(src.E, fallback || [0, 1, 2, 3, 4, 5, 6]),
+      N: cleanDays(src.N, fallback || [0, 1, 2, 3, 4, 5, 6])
+    };
+  }
+  function daysLabel(days) {
+    const d = cleanDays(days, []);
+    if (!d.length) return '근무 없음';
+    if (d.length === 7) return '매일';
+    if (d.join(',') === '1,2,3,4,5') return '월~금';
+    if (d.join(',') === '1,2,3,4,5,6') return '월~토';
+    if (d.join(',') === '0,6') return '토·일';
+    return d.map((n) => WD[n]).join('·');
   }
 
   let state = loadState();
@@ -175,12 +209,9 @@
   function weekIndex(s, d) {
     return Math.round((dayNum(mondayOf(d)) - dayNum(parseISO(s.baseMonday))) / 7);
   }
-  function isWorkday(s, d) {
-    const dow = d.getDay();
-    if (s.weekMode === '5') return dow >= 1 && dow <= 5;
-    if (s.weekMode === '6') return dow >= 1 && dow <= 6;
-    if (s.weekMode === 'custom') return s.customDays.indexOf(dow) >= 0;
-    return true;
+  function isWorkday(s, shiftId, d) {
+    const days = (s.shiftDays && s.shiftDays[shiftId]) || [0, 1, 2, 3, 4, 5, 6];
+    return days.indexOf(d.getDay()) >= 0;
   }
   function rotatedShift(s, teamIdx, d) {
     const base = s.baseShift[teamIdx] || 'O';
@@ -190,7 +221,9 @@
     return s.order[(idx + 4) % 4];
   }
   function baseShiftFor(s, teamIdx, d) {
-    return isWorkday(s, d) ? rotatedShift(s, teamIdx, d) : 'O';
+    const sid = rotatedShift(s, teamIdx, d);
+    if (sid === 'O') return 'O';                 // 휴무 주는 7일 모두 휴무
+    return isWorkday(s, sid, d) ? sid : 'O';     // 그 주의 근무 요일이 아니면 휴무
   }
 
   // 그 날 그 조의 "실제" 표시 상태
@@ -202,6 +235,7 @@
     switch (ov.t) {
       case 'annual': return { sid: 'O', kind: 'annual', memo: ov.n || '' };
       case 'vacation': return { sid: 'O', kind: 'vacation', memo: ov.n || '' };
+      case 'comp': return { sid: 'O', kind: 'comp', memo: ov.n || '' };
       case 'amHalf': return { sid: base, kind: 'half', half: 'am', memo: ov.n || '' };
       case 'pmHalf': return { sid: base, kind: 'half', half: 'pm', memo: ov.n || '' };
       case 'overtime': return { sid: ov.s && SHIFTS[ov.s] ? ov.s : (base === 'O' ? 'D' : base), kind: 'ot', memo: ov.n || '' };
@@ -216,6 +250,7 @@
   function effLabel(e) {
     if (e.kind === 'annual') return '연차';
     if (e.kind === 'vacation') return '휴가';
+    if (e.kind === 'comp') return '대체휴무';
     if (e.kind === 'half') return e.half === 'am' ? '오전반차' : '오후반차';
     if (e.kind === 'ot') return '특근';
     return SHIFTS[e.sid] ? SHIFTS[e.sid].label : '휴무';
@@ -223,6 +258,7 @@
   function effShort(e) {
     if (e.kind === 'annual') return '연차';
     if (e.kind === 'vacation') return '휴가';
+    if (e.kind === 'comp') return '대체휴';
     if (e.kind === 'half') return e.half === 'am' ? '오전반' : '오후반';
     if (e.kind === 'ot') return '특근';
     return SHIFTS[e.sid] ? SHIFTS[e.sid].short : '휴무';
@@ -230,6 +266,7 @@
   function effClass(e) {
     if (e.kind === 'annual') return 'b-annual';
     if (e.kind === 'vacation') return 'b-vac';
+    if (e.kind === 'comp') return 'b-comp';
     if (e.kind === 'half') return 'b-half';
     if (e.kind === 'ot') return 'b-ot';
     return 'b-' + (SHIFTS[e.sid] ? e.sid : 'O');
@@ -237,6 +274,7 @@
   function effDot(e) {
     if (e.kind === 'annual') return 'c-annual';
     if (e.kind === 'vacation') return 'c-vac';
+    if (e.kind === 'comp') return 'c-comp';
     if (e.kind === 'half') return 'c-half';
     if (e.kind === 'ot') return 'c-ot';
     return 'c-' + (SHIFTS[e.sid] ? e.sid : 'O');
@@ -249,7 +287,7 @@
 
   function leaveStats(s) {
     const y = s.annualYear;
-    let used = 0, vac = 0, ot = 0, other = 0;
+    let used = 0, vac = 0, ot = 0, comp = 0;
     Object.keys(s.overrides).forEach((date) => {
       if (date.slice(0, 4) !== String(y)) return;
       Object.keys(s.overrides[date]).forEach((tk) => {
@@ -259,11 +297,11 @@
         else if (ov.t === 'amHalf' || ov.t === 'pmHalf') used += 0.5;
         else if (ov.t === 'vacation') vac += 1;
         else if (ov.t === 'overtime') ot += 1;
-        else other += 0;
+        else if (ov.t === 'comp') comp += 1;
       });
     });
     const total = s.annualTotal || 0;
-    return { total, used, remain: Math.max(0, total - used), vac, ot };
+    return { total, used, remain: Math.max(0, total - used), vac, ot, comp };
   }
 
   /* =========================================================
@@ -292,6 +330,7 @@
       o: s.order,
       w: s.weekMode,
       c: s.customDays,
+      sd: s.shiftDays,
       a: s.annualTotal,
       y: s.annualYear,
       x: s.overrides
@@ -302,7 +341,7 @@
       v: 1,
       teams: (o.n || []).map((name) => ({ name })),
       myTeam: o.m, baseMonday: o.b, baseShift: o.s, order: o.o,
-      weekMode: o.w, customDays: o.c, annualTotal: o.a, annualYear: o.y,
+      shiftDays: o.sd, weekMode: o.w, customDays: o.c, annualTotal: o.a, annualYear: o.y,
       overrides: o.x || {}
     });
   }
@@ -419,7 +458,7 @@
   function renderLegend() {
     const items = [
       ['c-D', '오전 06–14'], ['c-E', '오후 14–22'], ['c-N', '야간 22–06'], ['c-O', '휴무'],
-      ['c-annual', '연차'], ['c-vac', '휴가'], ['c-ot', '특근']
+      ['c-annual', '연차'], ['c-vac', '휴가'], ['c-comp', '대체휴무'], ['c-ot', '특근']
     ];
     $('legend').innerHTML = items.map(([c, t]) =>
       '<span><i class="dot ' + c + '"></i>' + t + '</span>').join('');
@@ -435,7 +474,7 @@
       '<div class="lv-num"><strong>' + fmtNum(st.remain) + '</strong><span>일 남음</span></div>' +
       '<div class="bar"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
       '<div class="lv-sub">총 ' + fmtNum(st.total) + '일 중 ' + fmtNum(st.used) + '일 사용' +
-      ' · 휴가 ' + fmtNum(st.vac) + '일 · 특근 ' + fmtNum(st.ot) + '일</div>';
+      ' · 휴가 ' + fmtNum(st.vac) + '일 · 대체휴무 ' + fmtNum(st.comp) + '일 · 특근 ' + fmtNum(st.ot) + '일</div>';
   }
 
   /* =========================================================
@@ -646,6 +685,19 @@
     showSheet();
   }
 
+  function presetDays(n) {
+    if (n === 7) return [0, 1, 2, 3, 4, 5, 6];
+    return n === 5 ? [1, 2, 3, 4, 5] : [1, 2, 3, 4, 5, 6];
+  }
+  function markPresets(row, id) {
+    if (!row) return;
+    const cur = (draft.shiftDays[id] || []).join(',');
+    row.querySelectorAll('[data-sdq]').forEach((b) => {
+      const n = Number(b.getAttribute('data-sdq').split('-')[1]);
+      b.classList.toggle('on', cur === presetDays(n).join(','));
+    });
+  }
+
   function renderSettings() {
     const s = draft;
     const names = s.teams.map((t, i) =>
@@ -668,18 +720,18 @@
     }).join('') + (ORDER_PRESETS.some((p) => p.arr.join('') === curOrder) ? '' :
       '<option value="' + curOrder + '" selected>직접 설정한 순서</option>');
 
-    const modes = [
-      ['7', '주 7일 순환', '주말 포함 매일 같은 근무 (7일 교대)'],
-      ['5', '주 5일 근무', '월~금 근무, 토·일 휴무 후 다음 주 교대'],
-      ['6', '주 6일 근무', '월~토 근무, 일 휴무 후 다음 주 교대'],
-      ['custom', '직접 설정', '근무하는 요일을 직접 고르기']
-    ].map(([v, t, sub]) =>
-      '<label><input type="radio" name="wm" value="' + v + '"' + (s.weekMode === v ? ' checked' : '') + '>' +
-      '<span>' + t + '<span class="rl-sub">' + sub + '</span></span></label>').join('');
-
-    const dayChecks = WD.map((w, i) =>
-      '<label class="' + (s.customDays.indexOf(i) >= 0 ? 'on' : '') + '"><input type="checkbox" data-day="' + i + '"' +
-      (s.customDays.indexOf(i) >= 0 ? ' checked' : '') + '>' + w + '</label>').join('');
+    const sdRows = ['D', 'E', 'N'].map((id) => {
+      const days = s.shiftDays[id] || [];
+      const checks = WD.map((w, i) =>
+        '<label class="' + (days.indexOf(i) >= 0 ? 'on' : '') + '"><input type="checkbox" data-sdday="' + id + '-' + i + '"' +
+        (days.indexOf(i) >= 0 ? ' checked' : '') + '>' + w + '</label>').join('');
+      const quick = [5, 6, 7].map((n) =>
+        '<button data-sdq="' + id + '-' + n + '" class="' + (days.join(',') === presetDays(n).join(',') ? 'on' : '') + '">' + n + '일</button>').join('');
+      return '<div class="sd-row">' +
+        '<div class="sd-head"><span class="badge b-' + id + '">' + SHIFTS[id].label + ' <em>' + SHIFTS[id].time + '</em></span>' +
+        '<div class="sd-quick">' + quick + '</div></div>' +
+        '<div class="day-checks">' + checks + '</div></div>';
+    }).join('');
 
     sheetInner.innerHTML =
       '<div class="sheet-head"><div><h2>설정</h2>' +
@@ -699,8 +751,11 @@
       '<div class="sheet-sec"><h3>순환 순서 (1주마다)</h3>' +
       '<div class="form-row"><select id="setOrder" style="max-width:none;width:100%">' + orderOpts + '</select></div></div>' +
 
-      '<div class="sheet-sec"><h3>주말 처리</h3><div class="radio-list">' + modes + '</div>' +
-      '<div class="day-checks" id="dayChecks"' + (s.weekMode === 'custom' ? '' : ' hidden') + '>' + dayChecks + '</div></div>' +
+      '<div class="sheet-sec"><h3>근무 요일 (시프트마다)</h3>' +
+      '<p class="hint">오전주·오후주·야간주마다 회사 규칙이 다르면 여기서 맞춰 주세요. 체크한 요일만 근무하고, 나머지는 휴무로 표시됩니다. 휴무 주는 7일 내내 휴무예요.</p>' +
+      '<div class="sd-list">' + sdRows +
+      '<div class="sd-row sd-off"><span class="badge b-O">휴무</span><span class="sd-off-t">휴무 주 · 7일 내내 휴무</span></div>' +
+      '</div></div>' +
 
       '<div class="sheet-sec"><h3>연차</h3>' +
       '<div class="form-row"><label for="setAnnual">' + s.annualYear + '년 총 연차</label>' +
@@ -742,22 +797,34 @@
     });
     const ord = sheetInner.querySelector('#setOrder');
     if (ord) ord.addEventListener('change', () => { draft.order = ord.value.split(''); });
-    sheetInner.querySelectorAll('input[name=wm]').forEach((el) => {
+    sheetInner.querySelectorAll('[data-sdday]').forEach((el) => {
       el.addEventListener('change', () => {
-        draft.weekMode = el.value;
-        const dc = sheetInner.querySelector('#dayChecks');
-        if (dc) dc.hidden = el.value !== 'custom';
-      });
-    });
-    sheetInner.querySelectorAll('[data-day]').forEach((el) => {
-      el.addEventListener('change', () => {
-        const dow = Number(el.getAttribute('data-day'));
-        const set = draft.customDays.slice();
+        const parts = el.getAttribute('data-sdday').split('-');
+        const id = parts[0];
+        const dow = Number(parts[1]);
+        const set = (draft.shiftDays[id] || []).slice();
         const idx = set.indexOf(dow);
         if (el.checked && idx < 0) set.push(dow);
         if (!el.checked && idx >= 0) set.splice(idx, 1);
-        draft.customDays = set.sort();
+        draft.shiftDays[id] = set.sort((a, b) => a - b);
         el.parentElement.classList.toggle('on', el.checked);
+        markPresets(el.closest('.sd-row'), id);
+      });
+    });
+    sheetInner.querySelectorAll('[data-sdq]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const parts = el.getAttribute('data-sdq').split('-');
+        const id = parts[0];
+        const n = Number(parts[1]);
+        draft.shiftDays[id] = presetDays(n);
+        const row = el.closest('.sd-row');
+        row.querySelectorAll('[data-sdday]').forEach((cb) => {
+          const dow = Number(cb.getAttribute('data-sdday').split('-')[1]);
+          const on = draft.shiftDays[id].indexOf(dow) >= 0;
+          cb.checked = on;
+          cb.parentElement.classList.toggle('on', on);
+        });
+        markPresets(row, id);
       });
     });
     const ann = sheetInner.querySelector('#setAnnual');
@@ -817,7 +884,7 @@
       '<dt>내 조</dt><dd>' + esc(s.teams[s.myTeam].name) + '</dd>' +
       '<dt>기준 주</dt><dd>' + s.baseMonday + ' (월)</dd>' +
       '<dt>순환</dt><dd>' + s.order.map((id) => SHIFTS[id].label).join(' → ') + '</dd>' +
-      '<dt>주말</dt><dd>' + ({ '7': '주 7일 순환', '5': '주 5일 근무', '6': '주 6일 근무', custom: '직접 설정' })[s.weekMode] + '</dd>' +
+      '<dt>근무 요일</dt><dd>오전 ' + daysLabel(s.shiftDays.D) + ' · 오후 ' + daysLabel(s.shiftDays.E) + ' · 야간 ' + daysLabel(s.shiftDays.N) + '</dd>' +
       '<dt>기록</dt><dd>연차 ' + fmtNum(st.used) + '일 · 휴가 ' + fmtNum(st.vac) + '일</dd>' +
       '</dl>' +
       '<p class="hint">링크에는 지금 설정(조 이름·기준 주·순환)과 등록한 연차·휴가·메모가 함께 담깁니다. 친구는 링크를 열어 "내 기기에 저장"을 누르면 그 근무표를 자기 기기에도 저장할 수 있어요.<br><br>나중에 연차를 더 추가하면 그때 <b>새 링크를 다시 보내주세요</b> — 링크는 보낸 순간의 내용으로 고정됩니다.</p>' +
@@ -899,8 +966,9 @@
           'SUMMARY:' + icsEscape(title),
           'DESCRIPTION:' + icsEscape(sh.label + ' ' + sh.time + (e.memo ? ' / ' + e.memo : '')),
           'TRANSP:OPAQUE', 'END:VEVENT');
-      } else if (e.kind === 'annual' || e.kind === 'vacation' || e.kind === 'half') {
-        const label = e.kind === 'half' ? (e.half === 'am' ? '오전반차' : '오후반차') : (e.kind === 'annual' ? '연차' : '휴가');
+      } else if (e.kind === 'annual' || e.kind === 'vacation' || e.kind === 'half' || e.kind === 'comp') {
+        const label = e.kind === 'half' ? (e.half === 'am' ? '오전반차' : '오후반차')
+          : (e.kind === 'annual' ? '연차' : (e.kind === 'comp' ? '대체휴무' : '휴가'));
         const nd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
         L.push('BEGIN:VEVENT', 'UID:' + uid + '-leave@4shift-calendar', 'DTSTAMP:' + icsStamp(new Date()),
           'DTSTART;VALUE=DATE:' + icsDate(d), 'DTEND;VALUE=DATE:' + icsDate(nd),
@@ -1006,16 +1074,21 @@
     const ua = navigator.userAgent || '';
     return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   }
+  function setBanner(v) {
+    const el = $('installBanner');
+    el.hidden = !v;
+    document.body.classList.toggle('has-ib', !!v);
+  }
   function maybeShowInstallBanner() {
     if (isStandalone()) return;
     if (flags().installDismissed) return;
     const el = $('installBanner');
-    if (isIOS()) { el.hidden = false; return; }
+    if (isIOS()) { setBanner(true); return; }
     // 그 외(안드로이드·PC)는 beforeinstallprompt가 오면 안내
     window.addEventListener('beforeinstallprompt', (ev) => {
       ev.preventDefault();
       window.__bip = ev;
-      el.hidden = false;
+      setBanner(true);
     });
   }
   function openInstallHelp() {
@@ -1068,7 +1141,7 @@
       case 'install-help': openInstallHelp(); break;
       case 'install-dismiss': {
         setFlag('installDismissed', true);
-        $('installBanner').hidden = true;
+        setBanner(false);
         break;
       }
       case 'save-shared': {
